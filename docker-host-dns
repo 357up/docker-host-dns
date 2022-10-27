@@ -1,0 +1,132 @@
+#!/bin/bash
+#
+# --------------------------------------------------------------
+# This script consumes Docker's start, stop and die events to
+# add/remove containers to/from /etc/hosts file so that they can
+# automatically be addressed by their hostnames.
+#
+# Has to be run as root
+# --------------------------------------------------------------
+#
+
+#set -x
+set -e
+
+_hosts_file="/etc/hosts"
+
+function listenDockerEvents {
+  while read -r event; do
+    _etype=$(echo "$event" | jq -r ".status")
+    cid=$(echo "$event" | jq -r ".id")
+    _cid=${cid:0:12}
+    _cname=$(echo "$event" | jq -r ".Actor.Attributes.name")
+    if [ "$_etype" == "start" ]; then
+      _cip=$(docker inspect --format '{{ range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$_cid")
+      _cip=$(echo "$_cip" | cut -d" " -f1)
+      addHost "$_cid" "$_cname" "$_cip"
+    elif [[ "$_etype" == "die" ]]; then
+      removeHostByCID "$_cid"
+    fi
+  done < <(docker events --filter event=start --filter event=die --format '{{json .}}')
+}
+
+function addHost() {
+  if [ "$#" != "3" ]; then
+    echo "Usage: addHost <container_id> <container_name> <container_ip>" >&2
+  fi
+  grep -q "\s$2$" $_hosts_file && {
+    _ccid=$(grep "$_cname" $_hosts_file | cut -f2 | cut -d" " -f1)
+    if [[ $_ccid != "$1" ]]; then
+        removeHostByCID "$_ccid"
+    fi
+  }
+  _cid="$1"
+  _cname="$2"
+  _cip="$3"
+  _hostnames="$_cid $_cname"
+  _line="$_cip$(printf '\t')$_hostnames"
+
+  if grep -q "$_cid" $_hosts_file; then
+    current=$(grep "$_hostnames" $_hosts_file)
+    if [[ "$current" != "$_line" ]]; then
+      sed -i "s/.*$_hostnames/$_line/" $_hosts_file
+      printf "\u21BB %s (%s) -> %s\n" "$_cid" "$_cname" "$_cip"
+    else
+      printf "= %s (%s) -> %s\n" "$_cid" "$_cname" "$_cip"
+    fi
+  else
+    echo -e "$_line" >>$_hosts_file
+    printf "+ %s (%s) -> %s\n" "$_cid" "$_cname" "$_cip"
+  fi
+}
+
+function removeHostByCID() {
+  if [ "$#" != "1" ]; then
+    echo "Usage: removeHostByCID <container_id>" >&2
+  fi
+  _cid="$1"
+  grep -q "$_cid" $_hosts_file && {
+    _lines=$(grep "$_cid" $_hosts_file)
+    if [[ $(grep -c . <<<"$(grep "$_cid" $_hosts_file)") -gt 1 ]]; then
+      printf "Ambiguity detected. More than one hosts entry for %s:\n%s\nSkipping...\n" \
+        "$_cid" "$(echo "$_lines" | sed 's/.*/\t&/')" >&2
+    else
+      _line=$_lines
+      _hnames=$(echo "$_line" | cut -f2)
+      _cname=$(echo "$_hnames" | cut -d" " -f2)
+      _cip=$(echo "$_line" | cut -f1)
+      sed -i "/$_cid/d" $_hosts_file && printf "\055 %s (%s) -> %s\n" "$_cid" "$_cname" "$_cip"
+    fi
+  } || printf "! %s\n" "$_cid"
+}
+
+function testAddHost {
+  _cid="ec89b7a8e6af"
+  _cname="test"
+  _cip="172.17.0.3"
+  addHost $_cid $_cname $_cip
+}
+
+function testUpdateExistingHost {
+  _cid="ec89b7a8e6af"
+  _cname="test"
+  _cip="172.17.0.4"
+  addHost $_cid $_cname $_cip
+}
+
+function testRemoveHostByCID {
+  _cid="ec89b7a8e6af"
+  removeHostByCID $_cid
+}
+
+for ((i = 1; i <= $#; i++)); do
+  if [[ ${!i} = "-t" || ${!i} = "--test" ]]; then
+    _hosts_file="h"
+    printf "%s\t%s\n" "127.0.0.1" "localhost" >$_hosts_file
+    printf "%s\t%s\n" "127.0.0.1" "ec89deadbeef test" >>$_hosts_file
+    testRemoveHostByCID && {
+      cat $_hosts_file
+      sleep 1
+    } || exit 1
+    testAddHost && {
+      cat $_hosts_file
+      sleep 1
+    } || exit 1
+    testAddHost && {
+      cat $_hosts_file
+      sleep 1
+    } || exit 1
+    testUpdateExistingHost && {
+      cat $_hosts_file
+      sleep 1
+    } || exit 1
+    testRemoveHostByCID && {
+      cat $_hosts_file
+      sleep 1
+    } || exit 1
+    rm -f $_hosts_file
+    exit 0
+  fi
+done
+
+listenDockerEvents
