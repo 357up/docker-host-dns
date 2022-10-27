@@ -37,7 +37,7 @@ function addHost() {
   grep -q "\s$2$" $_hosts_file && {
     _ccid=$(grep "$_cname" $_hosts_file | cut -f2 | cut -d" " -f1)
     if [[ $_ccid != "$1" ]]; then
-        removeHostByCID "$_ccid"
+      removeHostByCID "$_ccid"
     fi
   }
   _cid="$1"
