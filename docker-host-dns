@@ -12,8 +12,6 @@
 #set -x
 set -e
 
-_hosts_file="/etc/hosts"
-
 function listenDockerEvents {
   while read -r event; do
     _etype=$(echo "$event" | jq -r ".status")
@@ -21,8 +19,7 @@ function listenDockerEvents {
     _cid=${cid:0:12}
     _cname=$(echo "$event" | jq -r ".Actor.Attributes.name")
     if [ "$_etype" == "start" ]; then
-      _cip=$(docker inspect --format '{{ range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$_cid")
-      _cip=$(echo "$_cip" | cut -d" " -f1)
+      _cip=getCIPByCID "$_cid"
       addHost "$_cid" "$_cname" "$_cip"
     elif [[ "$_etype" == "die" ]]; then
       removeHostByCID "$_cid"
@@ -34,8 +31,8 @@ function addHost() {
   if [ "$#" != "3" ]; then
     echo "Usage: addHost <container_id> <container_name> <container_ip>" >&2
   fi
-  grep -q "\s$2$" $_hosts_file && {
-    _ccid=$(grep "$_cname" $_hosts_file | cut -f2 | cut -d" " -f1)
+  grep -q "\s$2$" "$_hosts_file" && {
+    _ccid=$(grep "$_cname" "$_hosts_file" | cut -f2 | cut -d" " -f1)
     if [[ $_ccid != "$1" ]]; then
       removeHostByCID "$_ccid"
     fi
@@ -46,16 +43,16 @@ function addHost() {
   _hostnames="$_cid $_cname"
   _line="$_cip$(printf '\t')$_hostnames"
 
-  if grep -q "$_cid" $_hosts_file; then
-    current=$(grep "$_hostnames" $_hosts_file)
+  if grep -q "$_cid" "$_hosts_file"; then
+    current=$(grep "$_hostnames" "$_hosts_file")
     if [[ "$current" != "$_line" ]]; then
-      sed -i "s/.*$_hostnames/$_line/" $_hosts_file
+      sed -i "s/.*$_hostnames/$_line/" "$_hosts_file"
       printf "\u21BB %s (%s) -> %s\n" "$_cid" "$_cname" "$_cip"
     else
       printf "= %s (%s) -> %s\n" "$_cid" "$_cname" "$_cip"
     fi
   else
-    echo -e "$_line" >>$_hosts_file
+    echo -e "$_line" >>"$_hosts_file"
     printf "+ %s (%s) -> %s\n" "$_cid" "$_cname" "$_cip"
   fi
 }
@@ -65,9 +62,10 @@ function removeHostByCID() {
     echo "Usage: removeHostByCID <container_id>" >&2
   fi
   _cid="$1"
-  grep -q "$_cid" $_hosts_file && {
-    _lines=$(grep "$_cid" $_hosts_file)
-    if [[ $(grep -c . <<<"$(grep "$_cid" $_hosts_file)") -gt 1 ]]; then
+  grep -q "$_cid" "$_hosts_file" && {
+    _lines=$(grep "$_cid" "$_hosts_file")
+    if [[ $(grep -c . <<<"$(grep "$_cid" "$_hosts_file")") -gt 1 ]]; then
+      # shellcheck disable=2001
       printf "Ambiguity detected. More than one hosts entry for %s:\n%s\nSkipping...\n" \
         "$_cid" "$(echo "$_lines" | sed 's/.*/\t&/')" >&2
     else
@@ -75,9 +73,31 @@ function removeHostByCID() {
       _hnames=$(echo "$_line" | cut -f2)
       _cname=$(echo "$_hnames" | cut -d" " -f2)
       _cip=$(echo "$_line" | cut -f1)
-      sed -i "/$_cid/d" $_hosts_file && printf "\055 %s (%s) -> %s\n" "$_cid" "$_cname" "$_cip"
+      sed -i "/$_cid/d" "$_hosts_file" && printf "\055 %s (%s) -> %s\n" "$_cid" "$_cname" "$_cip"
     fi
   } || printf "! %s\n" "$_cid"
+}
+
+function getCIPByCID() {
+  if [ "$#" != "1" ]; then
+    echo "Usage: getCIPByCID <container_id>" >&2
+  fi
+  _cip="$(docker inspect --format '{{ range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$1" | cut -d" " -f1)"
+}
+
+function addAllHosts() {
+  while read -r c; do
+    _cid=$(echo "$c" | cut -f1)
+    _cname=$(echo "$c"| cut -f2)
+    getCIPByCID "$_cid"
+    addHost "$_cid" "$_cname" "$_cip"
+  done < <(docker ps -q --format "{{.ID}}\t{{.Names}}")
+}
+
+function removeAllHosts() {
+  while read -r _cid; do
+    removeHostByCID "$_cid"
+  done < <(docker ps -aq)
 }
 
 function testAddHost {
@@ -99,34 +119,96 @@ function testRemoveHostByCID {
   removeHostByCID $_cid
 }
 
-for ((i = 1; i <= $#; i++)); do
-  if [[ ${!i} = "-t" || ${!i} = "--test" ]]; then
+function _exit() {
+  while read -r sig sigref; do
+    if [[ $sigref == "$1" ]]; then
+      _exit_code=$((128 + sig))
+      break
+    fi
+  done < <(trap -l | tr '\n' '\t' | sed -E 's/\)//g;s/\t\s?/\n/g;s/^\s//') 
+  echo "$1 received, cleaning up and exiting..." 
+  removeAllHosts
+  exit $_exit_code
+}
+
+function runTests() {
+    if [[ $_hosts_file == "/etc/hosts" ]]; then
     _hosts_file="h"
-    printf "%s\t%s\n" "127.0.0.1" "localhost" >$_hosts_file
-    printf "%s\t%s\n" "127.0.0.1" "ec89deadbeef test" >>$_hosts_file
+    fi
+    printf "%s\t%s\n" "127.0.0.1" "localhost" >"$_hosts_file"
+    printf "%s\t%s\n" "127.0.0.1" "deadbeeff00d test" >>"$_hosts_file"
     testRemoveHostByCID && {
-      cat $_hosts_file
+      cat "$_hosts_file"
       sleep 1
-    } || exit 1
+    } || return 1
     testAddHost && {
-      cat $_hosts_file
+      cat "$_hosts_file"
       sleep 1
-    } || exit 1
+    } || return 1
     testAddHost && {
-      cat $_hosts_file
+      cat "$_hosts_file"
       sleep 1
-    } || exit 1
+    } || return 1
     testUpdateExistingHost && {
-      cat $_hosts_file
+      cat "$_hosts_file"
       sleep 1
-    } || exit 1
+    } || return 1
     testRemoveHostByCID && {
-      cat $_hosts_file
+      cat "$_hosts_file"
       sleep 1
-    } || exit 1
-    rm -f $_hosts_file
+    } || return 1
+    rm -f "$_hosts_file"
+    return 0
+}
+
+### MAIN
+
+args=( "$@" )
+_hosts_file="/etc/hosts"
+
+if echo "${*}" | grep -q -E "(-f|--hosts-file)(\s+|=)(/)?([^\/\0]+?(/)?)+?(\s(-|--)|$)"; then
+  for i in "${!args[@]}"; do
+        if [[ "${args[$i]}" == "-f" || "${args[$i]}" == "--hosts-file" ]];
+        then
+          _hosts_file=${args[$i+1]}
+          break
+        elif [[ "${args[$i]}" =~ ^(-f|--hosts-file)\=(.+)((\s(-|--))|$) ]]; then
+          _hosts_file=${BASH_REMATCH[2]}
+        fi
+    done
+fi
+
+for i in "${!args[@]}"; do
+  if [[ "${args[$i]}" == "-a" || "${args[$i]}" == "--add-all-running" ]]; then
+    addAllHosts
     exit 0
+  fi
+  if [[ "${args[$i]}" == "-r" || "${args[$i]}" == "--remove-all" ]]; then
+    removeAllHosts
+    exit 0
+  fi
+  if [[ "${args[$i]}" == "-t" || "${args[$i]}" == "--test" ]]; then
+    if runTests; then
+        echo "Tests Ok"
+        exit 0
+    else
+        echo "Tests failed"
+        exit 1
+    fi
   fi
 done
 
-listenDockerEvents
+for s in SIGTERM SIGINT SIGHUP ; do
+    # shellcheck disable=2064
+    trap "_exit $s" "$s" 
+done
+
+while true; do
+  if docker stats --no-stream > /dev/null 2>&1; then
+    {
+      addAllHosts && listenDockerEvents
+    } || true
+  else
+    sleep 0.3
+  fi
+done

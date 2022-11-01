@@ -1,5 +1,5 @@
 [Unit]
-Description=Listens to docker start/stop/die events to add/remove containers to/from /etc/hosts so that they can be automatically adressed by their hostnames.
+Description=A script that monitors docker start/die events and adds/removes containers' IP addresses to/from /etc/hosts so that they can be automatically adressed by their hostnames.
 Documentation=https://github.com/357up/docker-hosts
 After=network-online.target docker.socket firewalld.service containerd.service
 Before=docker.service
@@ -9,12 +9,12 @@ Requires=docker.socket containerd.service
 [Service]
 Type=simple
 ExecStart=/usr/sbin/docker-host-dns
-ExecReload=/bin/kill -s HUP $MAINPID
-Restart=on-failure
+SuccessExitStatus=143
+RestartKillSignal=9
+Restart=always
 RestartSec=1s
 TimeoutStartSec=0
-# kill only the docker process, not all processes in the cgroup
-KillMode=process
+KillMode=mixed
 
 [Install]
 WantedBy=multi-user.target
