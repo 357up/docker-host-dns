@@ -19,7 +19,7 @@ function listenDockerEvents {
     _cid=${cid:0:12}
     _cname=$(echo "$event" | jq -r ".Actor.Attributes.name")
     if [ "$_etype" == "start" ]; then
-      _cip=getCIPByCID "$_cid"
+      getCIPByCID "$_cid"
       addHost "$_cid" "$_cname" "$_cip"
     elif [[ "$_etype" == "die" ]]; then
       removeHostByCID "$_cid"
