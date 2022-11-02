@@ -1,6 +1,6 @@
 NAME := docker-host-dns
-TAG :=  sed -n 's/^\([^^~]\{1,\}\)\(\^0\)\{0,1\}$$/\1/p' <(git name-rev --name-only --tags --no-undefined HEAD 2>/dev/null)
-VERSION != [[ -z $$($(TAG)) ]] && date  +"%Y%m%d" || echo "$(TAG)"
+TAG :=  git name-rev --name-only --tags --no-undefined HEAD 2>/dev/null \| sed -n 's/^\([^^~]\{1,\}\)\(\^0\)\{0,1\}$$/\1/p'
+VERSION != set -x; [[ -z $$($(TAG)) ]] && date  +"%Y%m%d" || echo "$(TAG)"
 RELEASE != git rev-parse --short HEAD
 ROOT_DIR := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 RPM_TOPDIR := $(ROOT_DIR)/dist/rpmbuild
