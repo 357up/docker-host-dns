@@ -1,9 +1,10 @@
 NAME := docker-host-dns
-TAG != set -x;git name-rev --name-only --tags --no-undefined HEAD 2>/dev/null \| sed -n 's/^\([^^~]\{1,\}\)\(\^0\)\{0,1\}$$/\1/p'
-VERSION != grep -oE "([0-9]+\.?)+" <(echo "$(TAG)") || date  +"%Y%m%d"
-RELEASE != echo "$(TAG)" | sed -E 's/v([0-9]+\.?)+-//' \| grep '' || echo "git$$(git rev-parse --short HEAD)"
 ROOT_DIR := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 RPM_TOPDIR := $(ROOT_DIR)/dist/rpmbuild
+HELPERS_DIR := $(ROOT_DIR)/build/helpers
+TAG != git describe --exact-match --tags HEAD 2>/dev/null
+VERSION != $(HELPERS_DIR)/process_tag.sh -v '$(TAG)'
+RELEASE != $(HELPERS_DIR)/process_tag.sh -r '$(TAG)'
 
 dist:
 	mkdir -p $(ROOT_DIR)/dist/rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
