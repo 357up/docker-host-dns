@@ -1,5 +1,5 @@
 [Unit]
-Description=A script that monitors docker start/die events and adds/removes containers' IP addresses to/from /etc/hosts so that they can be automatically adressed by their hostnames.
+Description=A script that monitors docker start/die events and adds/removes containers' IP address to/from /etc/hosts so that they can be automatically addressed by their hostnames.
 Documentation=https://github.com/357up/docker-hosts
 After=network-online.target docker.socket firewalld.service containerd.service
 Before=docker.service

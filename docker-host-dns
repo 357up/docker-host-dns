@@ -1,9 +1,10 @@
 #!/bin/bash
 #
 # --------------------------------------------------------------
-# This script consumes Docker's start, stop and die events to
-# add/remove containers to/from /etc/hosts file so that they can
-# automatically be addressed by their hostnames.
+# A script that monitors docker start/die events and
+# adds/removes containers' IP address to/from
+# /etc/hosts so that they can be automatically addressed by their
+# hostnames.
 #
 # Has to be run as root
 # --------------------------------------------------------------
@@ -88,7 +89,7 @@ function getCIPByCID() {
 function addAllHosts() {
   while read -r c; do
     _cid=$(echo "$c" | cut -f1)
-    _cname=$(echo "$c"| cut -f2)
+    _cname=$(echo "$c" | cut -f2)
     getCIPByCID "$_cid"
     addHost "$_cid" "$_cname" "$_cip"
   done < <(docker ps -q --format "{{.ID}}\t{{.Names}}")
@@ -125,57 +126,56 @@ function _exit() {
       _exit_code=$((128 + sig))
       break
     fi
-  done < <(trap -l | tr '\n' '\t' | sed -E 's/\)//g;s/\t\s?/\n/g;s/^\s//') 
-  echo "$1 received, cleaning up and exiting..." 
+  done < <(trap -l | tr '\n' '\t' | sed -E 's/\)//g;s/\t\s?/\n/g;s/^\s//')
+  echo "$1 received, cleaning up and exiting..."
   removeAllHosts
   exit $_exit_code
 }
 
 function runTests() {
-    if [[ $_hosts_file == "/etc/hosts" ]]; then
+  if [[ $_hosts_file == "/etc/hosts" ]]; then
     _hosts_file="h"
-    fi
-    printf "%s\t%s\n" "127.0.0.1" "localhost" >"$_hosts_file"
-    printf "%s\t%s\n" "127.0.0.1" "deadbeeff00d test" >>"$_hosts_file"
-    testRemoveHostByCID && {
-      cat "$_hosts_file"
-      sleep 1
-    } || return 1
-    testAddHost && {
-      cat "$_hosts_file"
-      sleep 1
-    } || return 1
-    testAddHost && {
-      cat "$_hosts_file"
-      sleep 1
-    } || return 1
-    testUpdateExistingHost && {
-      cat "$_hosts_file"
-      sleep 1
-    } || return 1
-    testRemoveHostByCID && {
-      cat "$_hosts_file"
-      sleep 1
-    } || return 1
-    rm -f "$_hosts_file"
-    return 0
+  fi
+  printf "%s\t%s\n" "127.0.0.1" "localhost" >"$_hosts_file"
+  printf "%s\t%s\n" "127.0.0.1" "deadbeeff00d test" >>"$_hosts_file"
+  testRemoveHostByCID && {
+    cat "$_hosts_file"
+    sleep 1
+  } || return 1
+  testAddHost && {
+    cat "$_hosts_file"
+    sleep 1
+  } || return 1
+  testAddHost && {
+    cat "$_hosts_file"
+    sleep 1
+  } || return 1
+  testUpdateExistingHost && {
+    cat "$_hosts_file"
+    sleep 1
+  } || return 1
+  testRemoveHostByCID && {
+    cat "$_hosts_file"
+    sleep 1
+  } || return 1
+  rm -f "$_hosts_file"
+  return 0
 }
 
 ### MAIN
 
-args=( "$@" )
+args=("$@")
 _hosts_file="/etc/hosts"
 
 if echo "${*}" | grep -q -E "(-f|--hosts-file)(\s+|=)(/)?([^\/\0]+?(/)?)+?(\s(-|--)|$)"; then
   for i in "${!args[@]}"; do
-        if [[ "${args[$i]}" == "-f" || "${args[$i]}" == "--hosts-file" ]];
-        then
-          _hosts_file=${args[$i+1]}
-          break
-        elif [[ "${args[$i]}" =~ ^(-f|--hosts-file)\=(.+)((\s(-|--))|$) ]]; then
-          _hosts_file=${BASH_REMATCH[2]}
-        fi
-    done
+    if [[ "${args[$i]}" == "-f" || "${args[$i]}" == "--hosts-file" ]]; then
+      _hosts_file=${args[$i + 1]}
+      break
+    elif [[ "${args[$i]}" =~ ^(-f|--hosts-file)\=(.+)((\s(-|--))|$) ]]; then
+      _hosts_file=${BASH_REMATCH[2]}
+    fi
+  done
 fi
 
 for i in "${!args[@]}"; do
@@ -189,22 +189,22 @@ for i in "${!args[@]}"; do
   fi
   if [[ "${args[$i]}" == "-t" || "${args[$i]}" == "--test" ]]; then
     if runTests; then
-        echo "Tests Ok"
-        exit 0
+      echo "Tests Ok"
+      exit 0
     else
-        echo "Tests failed"
-        exit 1
+      echo "Tests failed"
+      exit 1
     fi
   fi
 done
 
-for s in SIGTERM SIGINT SIGHUP ; do
-    # shellcheck disable=2064
-    trap "_exit $s" "$s" 
+for s in SIGTERM SIGINT SIGHUP; do
+  # shellcheck disable=2064
+  trap "_exit $s" "$s"
 done
 
 while true; do
-  if docker stats --no-stream > /dev/null 2>&1; then
+  if docker stats --no-stream >/dev/null 2>&1; then
     {
       addAllHosts && listenDockerEvents
     } || true

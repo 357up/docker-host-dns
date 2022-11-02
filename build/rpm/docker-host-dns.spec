@@ -1,7 +1,7 @@
 Name:           %{name_}
 Version:        %{version_}
 Release:        git%{release_}
-Summary:        Triggered by Docker's start/die events, updates `/etc/hosts`
+Summary:        Automatically adds/removes containers' IP address to `/etc/hosts`
 BuildRequires:  systemd-rpm-macros
 License:        Apache License, Version 2.0
 Group:          Admin
@@ -11,7 +11,7 @@ BuildArch:      noarch
 Requires:       systemd, docker-ce, jq
 
 %description
-A script that monitors docker start/die events and adds/removes containers' IP addresses to/from /etc/hosts so that they can be automatically adressed by their hostnames.
+A script that monitors docker start/die events and adds/removes containers' IP address to/from /etc/hosts so that they can be automatically addressed by their hostnames.
 
 %prep
 %setup -q
