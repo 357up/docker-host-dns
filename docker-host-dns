@@ -16,6 +16,7 @@ set -e
 function detectEngine {
   _fail=false
   _engine_version=$(docker --version || echo "N/A")
+  _supported="Currently supported engines are Docker (Community Edition) and Podman (with podman-docker)."
 
   if [[ ${_engine_version,,} =~ docker ]]; then
     _engine=docker
@@ -24,10 +25,10 @@ function detectEngine {
     _engine=podman
     _podman=true
   elif [[ $_engine_version == "N/A" ]]; then
-    printf "No container engine detected. Currently supported engines are Docker (Community Edition) and Podman (with podman-docker)\n"
+    printf "No container engine detected. %s Quiting...\n" "$_supported"
     _fail=true
   else
-    printf "Unsuported container engine %s detected. Quiting...\n" "$(echo "$_engine_version" | cut -d' ' -f1)"
+    printf "Unsuported container engine %s detected. %s Quiting...\n" "$(echo "$_engine_version" | cut -d' ' -f1)" "$_supported"
     _fail=true
   fi
 }
