@@ -1,6 +1,6 @@
 Name:           %{name_}
 Version:        %{version_}
-Release:        git%{release_}
+Release:        %{release_}
 Summary:        Automatically adds/removes containers' IP address to `/etc/hosts`
 BuildRequires:  systemd-rpm-macros
 License:        Apache License, Version 2.0
