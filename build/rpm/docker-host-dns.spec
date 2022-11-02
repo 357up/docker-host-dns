@@ -8,10 +8,10 @@ Group:          Admin
 URL:            https://github.com/357up/docker-hosts
 Source0:        %{name_}-%{version}.tar.gz
 BuildArch:      noarch
-Requires:       systemd, docker-ce, jq
+Requires:       systemd, (docker-ce or podman-docker), jq
 
 %description
-A script that monitors docker start/die events and adds/removes containers' IP address to/from /etc/hosts so that they can be automatically addressed by their hostnames.
+A script that monitors docker start/stop events and adds/removes containers' IP address to/from /etc/hosts so that they can be automatically addressed by their hostnames.
 
 %prep
 %setup -q
@@ -23,6 +23,8 @@ install -m 0755 %{name_} %{buildroot}/%{_sbindir}/%{name_}
 install %{name_}.service %{buildroot}/%{_unitdir}/%{name_}.service
 
 %post
+/usr/bin/rpm -q podman-docker &&
+    /usr/bin/sed -E -i "s/(Requires=)docker(\.socket)/\1podman\2/" %{_unitdir}/%{name_}.service
 %systemd_post %{name_}.service
 /bin/systemctl enable --now %{name_}.service
 
